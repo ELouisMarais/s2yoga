@@ -1,0 +1,75 @@
+# A file to keep the settings that are required for the temperature / humidity
+# control of the room.
+#
+# Columns:
+# Day of Week (Monday .. Sunday)
+# Start time (HH:MM)
+# Temperature (dd.d) in degree Celsius
+# Humidity (hh.h) in % relative humidity
+
+#         Start    Temperature  Humidity
+# DoW      Time      (deg C)     (%RH)
+MONDAY     00:00      21.0       20.0
+MONDAY     03:45      25.0       55.0
+MONDAY     04:15      37.0       50.0
+MONDAY     05:00      42.0       40.0
+MONDAY     06:45      43.0       40.0
+MONDAY     07:35      21.0       20.0
+MONDAY     07:45      25.0       55.0
+MONDAY     08:15      35.0       50.0
+MONDAY     09:00      40.0       40.0
+MONDAY     11:20      21.0       20.0
+MONDAY     16:00      25.0       55.0
+MONDAY     16:30      36.0       50.0
+MONDAY     17:15      41.0       40.0
+MONDAY     19:35      21.0       20.0
+TUESDAY    15:30      25.0       55.0
+TUESDAY    16:00      36.0       50.0
+TUESDAY    16:45      41.0       40.0
+TUESDAY    19:05      21.0       20.0
+WEDNESDAY  03:45      25.0       55.0
+WEDNESDAY  04:15      37.0       50.0
+WEDNESDAY  05:00      42.0       40.0
+WEDNESDAY  06:45      43.0       40.0
+WEDNESDAY  07:35      21.0       20.0
+WEDNESDAY  07:45      25.0       55.0
+WEDNESDAY  08:15      35.0       50.0
+WEDNESDAY  09:00      40.0       40.0
+WEDNESDAY  11:20      21.0       20.0
+WEDNESDAY  15:30      25.0       55.0
+WEDNESDAY  16:00      36.0       50.0
+WEDNESDAY  16:45      41.0       40.0
+WEDNESDAY  19:05      21.0       20.0
+THURSDAY   15:30      25.0       55.0
+THURSDAY   16:00      36.0       50.0
+THURSDAY   16:45      41.0       40.0
+THURSDAY   19:05      21.0       20.0
+FRIDAY     03:45      25.0       55.0
+FRIDAY     04:15      37.0       50.0
+FRIDAY     05:00      42.0       40.0
+FRIDAY     06:45      43.0       40.0
+FRIDAY     07:35      21.0       20.0
+FRIDAY     07:45      25.0       55.0
+FRIDAY     08:15      35.0       50.0
+FRIDAY     09:00      40.0       40.0
+FRIDAY     11:20      21.0       20.0
+FRIDAY     15:30      25.0       55.0
+FRIDAY     16:00      36.0       50.0
+FRIDAY     16:45      41.0       40.0
+FRIDAY     19:05      21.0       20.0
+SATURDAY   06:00      25.0       55.0
+SATURDAY   06:30      36.0       50.0
+SATURDAY   07:15      41.0       40.0
+SATURDAY   09:35      21.0       20.0
+SATURDAY   13:30      25.0       55.0
+SATURDAY   14:00      36.0       50.0
+SATURDAY   14:45      41.0       40.0
+SATURDAY   17:05      21.0       20.0
+SUNDAY     06:00      25.0       55.0
+SUNDAY     06:30      36.0       50.0
+SUNDAY     07:15      41.0       40.0
+SUNDAY     09:35      21.0       20.0
+SUNDAY     13:30      25.0       55.0
+SUNDAY     14:00      36.0       50.0
+SUNDAY     14:45      41.0       40.0
+SUNDAY     17:05      21.0       20.0
