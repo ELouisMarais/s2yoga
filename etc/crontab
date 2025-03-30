@@ -1,0 +1,2 @@
+# Check that logging is running every 5 minutes
+*/5 * * * * /usr/local/bin/kickstart.py  # See ~etc/kickstart.conf
