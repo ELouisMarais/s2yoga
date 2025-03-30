@@ -1,3 +1,5 @@
 The electronics is built on a piece of veroboard shaped to fit the 
 plastic case used to house it, which is why there is no PCB for this
 design.
+
+The schematics file is done in KiCad v 6.0
