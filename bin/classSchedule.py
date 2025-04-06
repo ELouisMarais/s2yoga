@@ -137,13 +137,8 @@
 # 1. Changed the date when the times goes to Summer time from 20 September to
 #    20 October, because 20 September is too early.
 #
-# TODO: Decided to rewrite the program to use settings that set the preheat
-#       times for different dates of the year. This way the program does not
-#       need to be modified when the program preheats changes...
-#       Major version number change required! And extensive testing.
-#
 # -----------------------------------------------------------------------------
-# Version: 0.0.11
+# Version: 0.0.12
 # Author: Louis Marais
 # Start date: 2024-10-26
 # Last modifications: 2024-10-26
@@ -155,6 +150,21 @@
 #    the 1 hr 40 min earlier is still a bit too much
 #
 # -----------------------------------------------------------------------------
+# Version: 0.0.13
+# Author: Louis Marais
+# Start date: 2025-03-30
+# Last modifications: 2025-04-06
+#
+# Modifications:
+# ~~~~~~~~~~~~~~
+# 1. Check datetime.conf file to get start time for the schedule depending on
+#    date of the year, instead of using the hard-coded bits.
+# 2. Removed the process lock bits of code as this program only runs once so
+#    the process lock parts are not required for correct functioning of the
+#    program.
+# 3. Redone some of the code such as formatting (.format ... to f-strings.
+#
+# -----------------------------------------------------------------------------
 # Version: {Next}
 # Author:
 # Start date:
@@ -163,7 +173,9 @@
 # Modifications:
 # ~~~~~~~~~~~~~~
 # 1.
-## -----------------------------------------------------------------------------
+#
+# -----------------------------------------------------------------------------
+
 import os
 import time
 import sys
@@ -173,12 +185,15 @@ import re
 import datetime
 
 script = os.path.basename(__file__)
-VERSION = "0.0.11"
+VERSION = "0.0.13"
 AUTHORS = "Louis Marais"
 
 DEBUG = False
 
-weekdays = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']
+weekdays = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY',
+						'SUNDAY']
+months = ['January','February','March','April','May','June','July','August',
+					'September','October','November','December']
 
 # -----------------------------------------------------------------------------
 def ts():
@@ -192,7 +207,7 @@ def debug(msg):
 
 # -----------------------------------------------------------------------------
 def errorExit(s):
-	print('ERROR: '+s)
+	print(f'ERROR: {s}')
 	sys.exit(1)
 
 # -----------------------------------------------------------------------------
@@ -204,35 +219,9 @@ def checkConfig(cfg, req):
 			cnt.append(s+','+key.lower())
 	for s in req:
 		if not s in cnt:
-			errorExit('Required key ({}) not in configuration file.'.format(s))
+			errorExit(f'Required key ({s}) not in configuration file.')
 	debug("All required section:key pairs found in configuration file.")
 	return(cnt)
-
-# -----------------------------------------------------------------------------
-def TestProcessLock(lockFile):
-	if (os.path.isfile(lockFile)):
-		flock=open(lockFile,'r')
-		info = flock.readline().split()
-		flock.close()
-		if (len(info)==2):
-			if (os.path.exists('/proc/'+str(info[1]))):
-				return False
-	return True
-
-# -----------------------------------------------------------------------------
-def CreateProcessLock(lockFile):
-	if (not TestProcessLock(lockFile)):
-		return False;
-	flock=open(lockFile,'w')
-	flock.write(os.path.basename(sys.argv[0]) + ' ' + str(os.getpid()))
-	flock.close()
-	return True
-
-# -----------------------------------------------------------------------------
-def RemoveProcessLock(lockFile):
-	if (os.path.isfile(lockFile)):
-		os.unlink(lockFile)
-	return
 
 # -----------------------------------------------------------------------------
 # No sanity checks required, we KNOW 't' is in the right format
@@ -250,15 +239,8 @@ def checktime(t):
 	return(False)
 
 # -----------------------------------------------------------------------------
-def calcTimes(dy,hr,mn,offst,temp,hum):
-	ts = hr*60+mn + offst
-	th = int(ts//60)
-	tm = ts-th*60
-	return "{:<11s}{:02d}:{:02d}{:10.1f}{:11.1f}".format(dy,th,tm,temp,hum)
-
-# -----------------------------------------------------------------------------
 def loadSchedule(flnm):
-	debug("Reading class schedule from {}".format(flnm))
+	debug(f"Reading class schedule from {flnm}")
 	schedule = []
 	# Load the class schedule file if it exists
 	if os.path.isfile(flnm):
@@ -279,225 +261,91 @@ def loadSchedule(flnm):
 				temp = float(m.groups()[2])
 				hum = float(m.groups()[3])
 				if not dy in weekdays:
-					errorExit("Invalid day of week in line {} of {}: {}".
-							 format(lines.index(line),flnm,m.groups()[0]))
+					errorExit(f"Invalid day of week in line {lines.index(line)} "+
+							 f"of {flnm}: {m.groups()[0]}")
 				if not (checktime(tm)):
-					errorExit("Invalid time specificed in line {} of {}: {}".
-							 format(lines.index(line),flnm,line))
+					errorExit(f"Invalid time specificed in line {lines.index(line)} "+
+							 f"of {flnm}: {line}")
 				schedule.append([dy,tm,temp,hum])
 			else:
-				errorExit("Invalid entry found in {} line {}: {}".
-							format(flnm,lines.index(line),line.strip()))
-	debug("Schedule read successfully. Found {} classes.".
-			 format(len(schedule)))
+				errorExit(f"Invalid entry found in {flnm} line {lines.index(line)}: "+
+							f"{line.strip()}")
+	debug(f"Schedule read successfully. Found {len(schedule)} classes.")
 	return(schedule)
 
 # -----------------------------------------------------------------------------
-def dayTime(s):
-	d = weekdays.index(s[0])
-	t = (int(s[1][0:2])*60.0 + int(s[1][3:]))/1440.0
-	dt = d+t
-	return(dt)
+# convert minutes to hh:mm
+def formatTime(t):
+	hr = t // 60
+	mn = t - (hr*60)
+	s = f"{hr:02d}:{mn:02d}"
+	return(s)
 
 # -----------------------------------------------------------------------------
-def getpreheattimes(hr,mn):
-	# Between 10 April and 20 September increase preheat 2 & 3 times by 30
-	# minutes.
-	preheat_tm1 = 60 + 60  # minutes
-	preheat_tm2 = 60 + 30  # minutes
-	preheat_tm3 = 45       # minutes
-	td = time.localtime()
-	doy = td.tm_yday
-	apr10 = int(datetime.datetime(td.tm_year,4,10,12,0,0).strftime('%j'))
-	#sep20 = int(datetime.datetime(td.tm_year,9,20,12,0,0).strftime('%j'))
-	# ver 0.0.11  Found that 20 Sep was too early to revert; made it 20 Oct
-	sep20 = int(datetime.datetime(td.tm_year,11,20,12,0,0).strftime('%j'))
-	if doy >= apr10 and doy <= sep20:
-		#print("Increasing preheat times from: ")
-		#print(preheat_tm1,preheat_tm2,preheat_tm3)
-		# ver 0.0.4 added the additional 30 minutes
-		# ver 0.0.7 increased ALL class heating by an additional 20 minutes.
-		# ver 0.0.8 increased ALL class heating by an additional 30 minutes.
-		# ver 0.0.9 DEcreased ALL class heating by 45 minutes.
-		# ver 0.0.10 INcreased ALL class heating by 30 minutes (rolling back
-		#            part of the change made in ver 0.0.9
-		# We need to set more windows ...
-		preheat_tm1 += 30 + 20 + 30 - 45 + 30
-		preheat_tm2 += 30 + 20 + 30 - 45 + 30
-		preheat_tm3 += 30 + 20 + 30 - 45 + 30
-		debug("Date between 10 April and 20 September. Preheat times increased "+
-				"by 30 + 20 + 30 - 45 + 30 minutes")
-		# ver 0.0.5 added the additional 45 minutes for classes that start before 12
-		# ver 0.0.6 increased the additional time to 60 minutes
-		if hr < 12:
-			preheat_tm1 += 60
-			preheat_tm2 += 60
-			preheat_tm3 += 60
-			debug("Date between 10 April and 20 September and class starts before"+
-					  " 12. Preheat times increased by an additional 60 minutes")
-	#print("Original times:",preheat_tm1,preheat_tm2,preheat_tm3)
-	if (hr == 6) and (mn == 0):
-		preheat_tm1 += 15
-		preheat_tm2 += 15
-		preheat_tm3 += 15
-		debug("Class starts at 06:00 - heating time made 15 minutes earlier!")
-		#print("Updated times:",preheat_tm1,preheat_tm2,preheat_tm3)
-	return(preheat_tm1,preheat_tm2,preheat_tm3)
-
-# -----------------------------------------------------------------------------
-def norm_program(cls):
-	debug("Creating normal program for this class: {}".format(cls))
-	dy = cls[0]
-	hr = int(cls[1][0:2])
-	mn = int(cls[1][3:])
-	t = cls[2]
-	h = cls[3]
-	(preheat_tm1,preheat_tm2,preheat_tm3) = getpreheattimes(hr,mn)
-	prgm = []
-	# Preheat time 1 before class set to 25 degrees, 55 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm1,25.0,55.0))
-	# Preheat time 2 before class set to setpoint -5 degrees, 50 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm2,t-5,50.0))
-	# Preheat time 3 before class set to setpoint degrees, setpoint %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm3,t,h))
-	# Up temperature by 1 degree if this is an early class
-	if (hr == 6) and (mn == 0):
-		prgm.append(calcTimes(dy,hr,mn,+45,t+1,h))
-	# 5 minutes after class set to 21 degrees, 20 %RH
-	prgm.append(calcTimes(dy,hr,mn,95,21.0,20.0))
-	return prgm
-
-# -----------------------------------------------------------------------------
-def two_programs(cls1,cls2):
-	debug("Creating a program for two classes following close together:")
-	debug("  Class 1: {}".format(cls1))
-	debug("  Class 2: {}".format(cls2))
-	dy = cls1[0]
-	hr = int(cls1[1][0:2])
-	mn = int(cls1[1][3:])
-	t = cls1[2]
-	h = cls1[3]
-	(preheat_tm1,preheat_tm2,preheat_tm3) = getpreheattimes(hr,mn)
-	prgm = []
-	# Preheat time 1 before class1 set to 25 degrees, 55 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm1,25.0,55.0))
-	# Preheat time 2 before class1 set to setpoint -5 degrees, 50 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm2,t-5,50.0))
-	# Preheat time 3 before class1 set to setpoint degrees, setpoint %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm3,t,h))
-	# Up temperature by 1 degree if this is an early class
-	# Then set it back 5 miutes after end of class
-	if (hr == 6) and (mn == 0):
-		prgm.append(calcTimes(dy,hr,mn,+45,t+1,h))
-		prgm.append(calcTimes(dy,hr,mn,+95,t,h))
-	# Class 2
-	dy = cls2[0]
-	hr = int(cls2[1][0:2])
-	mn = int(cls2[1][3:])
-	# 5 minutes after class2 set to 21 degrees, 20 %RH
-	prgm.append(calcTimes(dy,hr,mn,95,21.0,20.0))
-	return prgm
-
-# -----------------------------------------------------------------------------
-def hybrid_programs(cls1,cls2):
-	debug("Creating a hybrid program for two classes close together (> 30 min, <= 90 min):")
-	debug("  Class 1: {}".format(cls1))
-	debug("  Class 2: {}".format(cls2))
-	dy = cls1[0]
-	hr = int(cls1[1][0:2])
-	mn = int(cls1[1][3:])
-	t = cls1[2]
-	h = cls1[3]
-	(preheat_tm1,preheat_tm2,preheat_tm3) = getpreheattimes(hr,mn)
-	prgm = []
-	# Preheat time 1 before class1 set to 25 degrees, 55 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm1,25.0,55.0))
-	# Preheat time 2 before class1 set to setpoint -5 degrees, 50 %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm2,t-5,50.0))
-	# Preheat time 3 before class1 set to setpoint degrees, setpoint %RH
-	prgm.append(calcTimes(dy,hr,mn,-preheat_tm3,t,h))
-	# Up temperature by 1 degree if this is an early class
-	if (hr == 6) and (mn == 0):
-		prgm.append(calcTimes(dy,hr,mn,+45,t+1,h))
-	# 5 minutes after class1 set to setpoint -5 degrees, 40 %RH
-	prgm.append(calcTimes(dy,hr,mn,95,t-5,40.0))
-	# Class 2
-	dy = cls2[0]
-	hr = int(cls2[1][0:2])
-	mn = int(cls2[1][3:])
-	t = cls2[2]
-	h = cls2[3]
-	# 45 minutes before class1 set to setpoint degrees, setpoint %RH
-	prgm.append(calcTimes(dy,hr,mn,-45,t,h))
-	# 5 minutes after class2 set to 21 degrees, 20 %RH
-	prgm.append(calcTimes(dy,hr,mn,95,21.0,20.0))
-	return prgm
-
-# -----------------------------------------------------------------------------
-# When developing a class schedule, consider 2 classes each time
-# 1. If the difference between the end time of class 1 and the start of class 2
-#    is less or equal to 45 minutes keep the temperature as it was set at the
-#    start of class 1 until the end of class 2
-# 2. If this difference is less than 105 minutes, keep the temperature at 35
-#    celsius until 45 minutes before the start of class 2
-# 3. If the difference is > 105 minutes follow the 'normal' program schedule
+# The following preheat sequence is used:
 #
-# Normal program schedule:
-# 1. Set to 21 celsius, 20 %RH, Monday 00:00                   DP: -2.8 celsius
-# 2. Set to 25 celsius, 55 %RH, 105 minutes before class start DP: 15.3 celsius
-# 3. Set to {temp-5} celsius, 50 %RH, 90 minutes before class start DP: 23.0
-#    celsius
-# 4. Set to {temp} celsius, {hum} %RH, 45 minutes before class start DP: {calc}
-#    celsius
-# 5. Set to 21 celsius, 20 %RH, 5 minutes after class ends    DP: -2.8 celsius
+# @ preheat time: t = 25, h = 55
+# @ preheat time + 30: t = setT - 5, h = 50
+# @ preheat time + 45: t = setT,     h = setH
 #
-# Special cases (added for ver 0.0.3)
-# 1. For 6 am classes, start heating 1 hour before the time (not 45 minutes).
-# 2. For 6 am classes, increase temperature 1 degree in middle of the class.
-#
-def createTHsettings(programme):
-	#print("programme\n\n",programme)
+def createClass(set_vals,st_tms,prht_tms):
+	dy = set_vals[0]
+	t = set_vals[1].split(':')
+	hr = int(t[0])
+	tm = hr * 60 + int(t[1])
+	temp = set_vals[2]
+	hum = set_vals[3]
+	for i in range(0,len(st_tms)):
+		if hr < st_tms[i]:
+				prht_tm = prht_tms[i]
+				break
+	# Each programme has four entries, the last one is to set the temperature
+	# back (i.e. turn off the heat and humidity)
+	tmStr = formatTime(tm - prht_tm)
+	newprgm = [f"{dy:10s} {tmStr} {25:9.1f} {55:10.1f}"]
+	tmStr = formatTime(tm - prht_tm + 30)
+	newprgm.append(f"{dy:10s} {tmStr} {temp-5:9.1f} {55:10.1f}")
+	tmStr = formatTime(tm - prht_tm + 45)
+	newprgm.append(f"{dy:10s} {tmStr} {temp:9.1f} {hum:10.1f}")
+	# For 6 am classes, set temperature 1 degC higher for floor
+	# series ~ 45 minutes into the class.
+	if (hr == 6):
+		tmStr = formatTime(tm + 45)
+		newprgm.append(f"{dy:10s} {tmStr} {temp+1:9.1f} {hum:10.1f}")
+	tmStr = formatTime(tm + 95)
+	newprgm.append(f"{dy:10s} {tmStr} {21:9.1f} {20:10.1f}")
+	return (newprgm)
+
+# -----------------------------------------------------------------------------
+# For debugging, print the settings nicely
+def printSettings(lst):
+	print('\n-----  START of class settings --------\n')
+	for l in lst:
+		print(l)
+	print('\n-----  END of class settings ----------\n')
+	return
+
+# -----------------------------------------------------------------------------
+def createTHsettings(programme,strts,prhts):
 	c = 0
 	n = len(programme)
 	settings = ['MONDAY     00:00      21.0       20.0']
-	min_t = [
-		47/1440, # 45 (47) minutes
+	min_t = [   # Time between classes - to decide how to plan the classes.
+		47/1440,  # 45 (47) minutes
 		107/1440  # 105 (107) minutes
 		]
-	while True:
-		d1 = dayTime(programme[c])
-		d2 = 99 # Make it unreasonable large (max = 7 for calculated value)
-		if c < n-1:
-			d2 = dayTime(programme[c+1])
-			c += 1
-		c += 1
-		# if times far enough apart only create program for one class, increase c by 1
-		# otherwise create program covering both classes, increase c by 2
-		# dif = start of class 2 - end of class 1
-		dif = d2 - (d1 + 105/1440)
-		if dif < min_t[0]:
-			settings.extend(two_programs(programme[c-2],programme[c-1]))
-		elif dif < min_t[1]:
-			settings.extend(hybrid_programs(programme[c-2],programme[c-1]))
-		else:
-			settings.extend(norm_program(programme[c-2]))
-			# roll back one count
-			if (c-1) >= n-1:
-				# Prepare normal schedule for class2
-				settings.extend(norm_program(programme[c-1]))
-			else:
-				c -= 1
-		if c > n-1:
-			break
+	for i in range(0,len(programme)):
+		settings.extend(createClass(programme[i],strts,prhts))
+	debug("Temperature and humidity settings created from class schedule.")
+	# For debugging...
+	#printSettings(settings)
 	return(settings)
 
 # -----------------------------------------------------------------------------
 def saveSettingsFile(schedule,flnm):
-	# if file exists, ask user if it is OK to overwrite
-	# TODO: Add a check if file exists, warn user, overwrite warning if ignored, etc.
-	# Create the file header
 	header = [
-	 '# A file to keep the settings that are required for the temperature / humidity',
+	 '# A file to keep the settings that are required for the temperature /'+
+	 ' humidity',
 	 '# control of the room.',
 	 '#',
 	 '# Columns:',
@@ -512,9 +360,9 @@ def saveSettingsFile(schedule,flnm):
 	# write content
 	with open(flnm,'w') as f:
 		for h in header:
-			f.write("{}\n".format(h))
+			f.write(f"{h}\n")
 		for c in schedule:
-			f.write("{}\n".format(c))
+			f.write(f"{c}\n")
 		f.close()
 	return
 
@@ -538,14 +386,113 @@ def checkTHsettings(ths):
 				tm = ts3 - th*60
 				temp = float(m2.groups()[3])
 				hum = float(m2.groups()[4])
-				s = "{:<11s}{:02d}:{:02d}{:10.1f}{:11.1f}".format(dy,th,tm,temp,hum)
-				#print(f)
-				#print(g)
-				#print(s,'\n')
+				s = f"{dy:<11s}{th:02d}:{tm:02d}{temp:10.1f}{hum:11.1f}"
 				ths[i] = s
-		#else:
-		#	ths_fixed.append(g)
+	debug("Temperature and Humidity settings corrected for overlapping times.")
 	return(ths)
+
+# -----------------------------------------------------------------------------
+def makedate(day,mnth):
+	yr = time.localtime().tm_year
+	dy = int(day)
+	mn = months.index(mnth)+1
+	tmst = time.mktime(datetime.datetime(year=yr,month=mn,day=dy).timetuple())
+	dt = int(tmst/86400) + 40587 # MJD 'like' date
+	return(dt)
+
+# -----------------------------------------------------------------------------
+def getDateTimeSettings(fl,dt):  # Get settings on or after 'dt'
+	cnf = configparser.ConfigParser()
+	cnf.read(fl)
+	req = ['main,dates','defaults,startday','defaults,startmonth',
+				'defaults,times','defaults,preheat']
+	dtcnf = checkConfig(cnf, req)
+	chks = [s.strip() for s in list(cnf['main']['dates'].split(','))]
+	newdates = [makedate(cnf['defaults']['startday'],cnf['defaults']['startmonth'])]
+	sdts = [cnf['defaults']['startday']]
+	smnt = [cnf['defaults']['startmonth']]
+	times = [cnf['defaults']['times']]
+	preheats = [cnf['defaults']['preheat']]
+	for itm in chks:
+		reqs = ['startday','startmonth','times','preheat']
+		for r in reqs:
+			if not r in cnf[itm]:
+				errorExit(f"{r} not in {itm}")
+		newdates.append(makedate(cnf[itm]['startday'],cnf[itm]['startmonth']))
+		sdts.append(cnf[itm]['startday'])
+		smnt.append(cnf[itm]['startmonth'])
+		times.append(cnf[itm]['times'])
+		preheats.append(cnf[itm]['preheat'])
+	# find date on or after dt
+	cdt = newdates[0]
+	idx = -1
+	for i in range(0,len(newdates)):
+		if dt >= newdates[i]:
+			debug(f"Possible start date for new settings: {sdts[i]} {smnt[i]}")
+			debug(f"     Settings for {newdates[i]}, it is larger or equal to {dt}")
+			cdt = newdates[i]
+			tms = times[i]
+			phs = preheats[i]
+			idx = i
+	# Create lists of start and preheat times for programming the schedule.
+	st_times = []
+	ph_times = []
+	l = [s.strip() for s in tms.split(',')]
+	for k in l:
+		try:
+			t = int(k)
+		except:
+			msg =  f"Settings file: {fl}\n"
+			msg +=  "       There is an error in the start time list for "
+			msg += f"{sdts[idx]} {smnt[idx]}\n"
+			msg += f"       Start times list: {times[idx]}\n"
+			errorExit(msg)
+		if t >= 0 and t <= 24:
+			st_times.append(t)
+	l = [s.strip() for s in phs.split(',')]
+	for k in l:
+		try:
+			t = int(k)
+		except:
+			msg =  f"Settings file: {fl}\n"
+			msg +=  "       There is an error in the preheat times list for "
+			msg += f"{sdts[idx]} {smnt[idx]}\n"
+			msg += f"       Preheat times list: {preheats[idx]}\n"
+			errorExit(msg)
+		if t >= 0 and t <= 360: # Maximum preheat period is 360 minutes (6 hours)
+			ph_times.append(t)
+	if not len(st_times) == len(ph_times):
+		msg =  f"Settings file: {fl}\n"
+		msg += f"       The lengths of the start hours ({len(st_times)}) and pre-heat "
+		msg += f"times ({len(ph_times)}) are not equal!\n"
+		msg += "       The error is for this date in the settings file: "
+		msg += f"{sdts[idx]} {smnt[idx]}\n"
+		msg += f"       Start times list: {times[idx]}\n"
+		msg += f"       Preheat times list: {preheats[idx]}\n"
+		errorExit(msg)
+	return(st_times,ph_times)
+
+# -----------------------------------------------------------------------------
+def makeFilename(hm,fl):
+	if not fl.startswith('/'):
+		fl = hm + fl
+	return(fl)
+
+# -----------------------------------------------------------------------------
+def getCurrentDate(): # Something like MJD, but not quite (uses localtime, not gmtime)
+	yr = time.localtime().tm_year
+	mn = time.localtime().tm_mon
+	dy = time.localtime().tm_mday
+	tmst = time.mktime(datetime.datetime(year=yr,month=mn,day=dy).timetuple())
+	dt = int(tmst/86400) + 40587
+	return(dt)
+
+# -----------------------------------------------------------------------------
+def getDateFromStr(s):
+	lst = s.split()
+	d = int(lst[0])
+	m = lst[1]
+	return(d,m)
 
 # -----------------------------------------------------------------------------
 # Main
@@ -559,6 +506,8 @@ parser.add_argument("-v","--version",action="store_true",help="Show version "+
 parser.add_argument("-c","--config",nargs=1,help="Specify alternative "+
 										"configuration file. The default is "+
 										"~/etc/classSchedule.conf.")
+parser.add_argument("-t","--testdate",nargs=1,help="Specify a date to create "+
+										"a settings file for. Date must be in format 'd Month'")
 parser.add_argument("-d","--debug",action="store_true",
 										help="Turn debugging on")
 
@@ -567,7 +516,7 @@ args = parser.parse_args()
 if args.debug:
 	DEBUG = True
 
-versionStr = script+" version "+VERSION+" written by "+AUTHORS
+versionStr = f"{script} version {VERSION} written by {AUTHORS}"
 
 if args.version:
 	print(versionStr)
@@ -579,12 +528,12 @@ HOME = os.path.expanduser('~')
 if not(HOME.endswith('/')):
 	HOME += '/'
 
-debug("Current user's home :"+HOME)
+debug(f"Current user's home: {HOME}")
 
-configfile = HOME+"etc/classSchedule.conf"
+configfile = f"{HOME}etc/classSchedule.conf"
 
 if args.config:
-	debug("Alternate config file specified: "+str(args.config[0]))
+	debug(f"Alternate config file specified: {str(args.config[0])}")
 	configfile = str(args.config[0])
 	if not configfile.startswith('/'):
 		configfile = HOME+configfile
@@ -594,51 +543,54 @@ debug("Configuration file: "+configfile)
 if not os.path.isfile(configfile):
 	errorExit(configfile+' does not exist.')
 
+sDate = getCurrentDate()
+
+if args.testdate:
+	debug(f"Test date: {args.testdate[0]}")
+	(dy,mn) = getDateFromStr(args.testdate[0])
+	sDate = makedate(dy,mn)
+
 conf = configparser.ConfigParser()
 conf.read(configfile)
 
-req = ['main,lock file','main,settings file']
+req = ['main,settings file','main,datetime settings']
 
 cfg = checkConfig(conf, req)
 
-debug("conf['main']['lock file'] = {}".format(conf['main']['lock file']))
-debug("conf['main']['settings file'] = {}".format(conf['main']['settings file']))
+debug(f"conf['main']['settings file'] = {conf['main']['settings file']}")
+debug(f"conf['main']['datetime settings'] = {conf['main']['datetime settings']}")
 
-lockfile = conf['main']['lock file']
-
-if not lockfile.startswith('/'):
-	lockfile = HOME+lockfile
-
-debug("Lock file: "+lockfile)
-
-settingsfile = conf['main']['settings file']
-
-if not settingsfile.startswith('/'):
-	settingsfile = HOME+settingsfile
+# The file to save the temp hum settings that is set by the control program.
+settingsfile = makeFilename(HOME,conf['main']['settings file'])
 
 debug("Settings file: "+settingsfile)
 
 schedulefile = ""
 if conf['schedule']['file']:
-	schedulefile = conf['schedule']['file']
-	if not schedulefile.startswith('/'):
-		schedulefile = HOME+schedulefile
+	schedulefile = makeFilename(HOME,conf['schedule']['file'])
 	debug("Found a class schedule in the configuration: {}".format(schedulefile))
 	if not os.path.isfile(schedulefile):
 		schedulefile = ""
 		debug("Ignoring the class schedule in the configuration as it does not exists.")
 
-if not CreateProcessLock(lockfile):
-	errorExit('Unable to lock - '+script+' already running?')
+dtsettingsflnm = makeFilename(HOME,conf['main']['datetime settings'])
+
+if not os.path.isfile(dtsettingsflnm):
+	errorExit(f"{dtsettingsflnm} does not exist.")
+
+debug(f"Date and Time settings file: {dtsettingsflnm}")
+
+start_tms,preheat_tms = getDateTimeSettings(dtsettingsflnm,sDate)
 
 schedule = loadSchedule(schedulefile)
-thsettings = createTHsettings(schedule)
+
+thsettings = createTHsettings(schedule,start_tms,preheat_tms)
 
 thsettings = checkTHsettings(thsettings)
 
-# Create the temperature / humidity settings file
+# For debugging...
+#printSettings(thsettings)
+
 saveSettingsFile(thsettings,settingsfile)
 
-RemoveProcessLock(lockfile)
-
-debug('{} terminated.'.format(script))
+debug(f'{script} terminated.')
