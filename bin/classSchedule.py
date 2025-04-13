@@ -165,6 +165,16 @@
 # 3. Redone some of the code such as formatting (.format ... to f-strings.
 #
 # -----------------------------------------------------------------------------
+# Version: 0.0.14
+# Author: Louis Marais
+# Start date: 2025-04-13
+# Last modifications: 2025-04-13
+#
+# Modifications:
+# ~~~~~~~~~~~~~~
+# 1. Bug fix, humidity in 2nd cycle should be 50 %RH, was set to 55 %RH
+#
+# -----------------------------------------------------------------------------
 # Version: {Next}
 # Author:
 # Start date:
@@ -304,7 +314,7 @@ def createClass(set_vals,st_tms,prht_tms):
 	tmStr = formatTime(tm - prht_tm)
 	newprgm = [f"{dy:10s} {tmStr} {25:9.1f} {55:10.1f}"]
 	tmStr = formatTime(tm - prht_tm + 30)
-	newprgm.append(f"{dy:10s} {tmStr} {temp-5:9.1f} {55:10.1f}")
+	newprgm.append(f"{dy:10s} {tmStr} {temp-5:9.1f} {50:10.1f}")
 	tmStr = formatTime(tm - prht_tm + 45)
 	newprgm.append(f"{dy:10s} {tmStr} {temp:9.1f} {hum:10.1f}")
 	# For 6 am classes, set temperature 1 degC higher for floor
